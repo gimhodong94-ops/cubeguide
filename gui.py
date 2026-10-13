@@ -16,10 +16,13 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
     QHBoxLayout,
+    QBoxLayout,
     QVBoxLayout,
     QTabWidget,
     QMessageBox,
     QSizePolicy,
+    QScrollArea,
+    QFrame,
 )
 
 from cube_engine import (
@@ -244,7 +247,7 @@ def copy_faces(faces):
     return {face: faces[face][:] for face in FACE_ORDER}
 
 
-def sticker_style(color, highlighted=False):
+def sticker_style(color, highlighted=False, size=None):
     background = COLOR_HEX.get(color, "#E2E8F0")
     foreground = (
         "#172033"
@@ -257,13 +260,103 @@ def sticker_style(color, highlighted=False):
         else "1px solid #94A3B8"
     )
 
+    dimensions = (
+        f"min-width: {size}px; max-width: {size}px;"
+        f"min-height: {size}px; max-height: {size}px;"
+        if size is not None
+        else ""
+    )
     return (
         f"background: {background};"
         f"color: {foreground};"
         f"border: {border};"
         "border-radius: 6px;"
+        "padding: 0;"
         "font-weight: bold;"
+        f"{dimensions}"
     )
+
+
+def configure_application_style(app):
+    app.setStyleSheet("""
+        QWidget {
+            color: #172033;
+            font-family: "Malgun Gothic";
+            font-size: 13px;
+        }
+        QMainWindow {
+            background: #F1F5F9;
+        }
+        QTabWidget::pane {
+            background: #F8FAFC;
+            border: 1px solid #D9E2EF;
+            border-top: 0;
+        }
+        QTabBar::tab {
+            color: #64748B;
+            background: #E8EEF6;
+            border: 0;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            padding: 12px 22px;
+            margin-right: 4px;
+        }
+        QTabBar::tab:selected {
+            color: #1D4ED8;
+            background: #FFFFFF;
+            font-weight: 700;
+        }
+        QPushButton {
+            color: #243247;
+            background: #FFFFFF;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 8px 12px;
+            min-height: 20px;
+        }
+        QPushButton:hover {
+            background: #F1F5F9;
+            border-color: #94A3B8;
+        }
+        QPushButton:pressed {
+            background: #E2E8F0;
+        }
+        QPushButton:disabled {
+            color: #94A3B8;
+            background: #F1F5F9;
+            border-color: #E2E8F0;
+        }
+        QCheckBox {
+            spacing: 8px;
+            padding: 4px 0;
+        }
+        QCheckBox::indicator {
+            width: 17px;
+            height: 17px;
+        }
+        QScrollArea {
+            background: transparent;
+            border: 0;
+        }
+        QFrame#card {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+        }
+        QLabel#pageTitle {
+            color: #0F172A;
+            font-size: 21px;
+            font-weight: 700;
+        }
+        QLabel#mutedText {
+            color: #64748B;
+        }
+        QLabel#stepTitle {
+            color: #1D4ED8;
+            font-size: 19px;
+            font-weight: 700;
+        }
+    """)
 
 
 class SolverThread(QThread):
@@ -288,8 +381,9 @@ class CubeGuide(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("3×3 큐브 가이드 · 첫 번째 버전")
-        self.resize(1120, 800)
+        self.setWindowTitle("3×3 큐브 가이드")
+        self.setMinimumSize(840, 620)
+        self.resize(1180, 820)
 
         self.faces = {
             face: [
@@ -309,6 +403,7 @@ class CubeGuide(QMainWindow):
         self.radial_picker = RadialColorPicker(self)
 
         self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
         self.setCentralWidget(self.tabs)
 
         self.make_input_page()
@@ -321,12 +416,22 @@ class CubeGuide(QMainWindow):
         self.tabs.setTabEnabled(1, False)
         self.update_input()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "input_content_layout"):
+            direction = (
+                QBoxLayout.Direction.LeftToRight
+                if event.size().width() >= 960
+                else QBoxLayout.Direction.TopToBottom
+            )
+            self.input_content_layout.setDirection(direction)
+
     def make_net(self, editable):
         panel = QWidget()
         layout = QGridLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(6)
-        layout.setVerticalSpacing(5)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(8)
         panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         buttons = {}
@@ -334,19 +439,20 @@ class CubeGuide(QMainWindow):
         for face in FACE_ORDER:
             face_panel = QWidget()
             face_layout = QVBoxLayout(face_panel)
-            face_layout.setContentsMargins(0, 0, 0, 0)
+            face_layout.setContentsMargins(2, 2, 2, 2)
+            face_layout.setSpacing(7)
 
             title = QLabel(f"{FACE_NAMES[face]} · {face}")
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title.setStyleSheet("font-size: 12px; font-weight: 600; color: #475569;")
+            title.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569;")
             face_layout.addWidget(title)
 
             grid = QGridLayout()
-            grid.setSpacing(4)
+            grid.setSpacing(5)
 
             for index in range(9):
                 button = StickerButton() if editable else QPushButton()
-                button.setFixedSize(42, 42)
+                button.setFixedSize(40, 40)
 
                 if editable:
                     button.radial_started.connect(self.begin_radial_color)
@@ -379,17 +485,28 @@ class CubeGuide(QMainWindow):
 
     def make_input_page(self):
         self.input_page = QWidget()
+        self.input_page.setObjectName("appPage")
         layout = QVBoxLayout(self.input_page)
+        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setSpacing(7)
 
         explanation = QLabel(
-            "① 실제 큐브의 앞면 F와 윗면 U를 정하세요.\n"
-            "② 색을 선택해 칸을 클릭하거나, 칸에서 우클릭한 채 원하는 색 방향으로 드래그하세요.\n"
-            "각 면은 바깥에서 직접 본 모습으로 입력합니다."
+            "① 실제 큐브의 앞면 F와 윗면 U를 정하세요. 각 면은 바깥에서 직접 본 모습으로 입력합니다.\n"
+            "② 색을 선택해 칸을 클릭하거나, 칸에서 우클릭한 채 원하는 색 방향으로 드래그하세요."
         )
         explanation.setWordWrap(True)
+        explanation.setObjectName("mutedText")
+        explanation.setStyleSheet("line-height: 145%;")
+        heading = QLabel("큐브 색상 입력")
+        heading.setObjectName("pageTitle")
+        layout.addWidget(heading)
         layout.addWidget(explanation)
 
-        palette = QHBoxLayout()
+        palette_card = QFrame()
+        palette_card.setObjectName("card")
+        palette = QHBoxLayout(palette_card)
+        palette.setContentsMargins(10, 7, 10, 7)
+        palette.setSpacing(7)
         self.palette_group = QButtonGroup(self)
         self.palette_group.setExclusive(True)
 
@@ -397,7 +514,7 @@ class CubeGuide(QMainWindow):
             button = QPushButton(f"{color}  {name}")
             button.setCheckable(True)
             button.setMinimumHeight(38)
-            button.setStyleSheet(sticker_style(color))
+            button.setStyleSheet(sticker_style(color, size=58))
             self.palette_group.addButton(button)
             self.color_buttons[color] = button
 
@@ -416,38 +533,38 @@ class CubeGuide(QMainWindow):
         )
         palette.addWidget(erase_button)
 
-        self.auto_fill_button = QPushButton("확실한 색 자동 채우기")
-        self.auto_fill_button.setMinimumHeight(38)
-        self.auto_fill_button.clicked.connect(self.auto_fill_from_button)
-        palette.addWidget(self.auto_fill_button)
-
-        layout.addLayout(palette)
+        layout.addWidget(palette_card)
 
         self.selected_label = QLabel()
-        layout.addWidget(self.selected_label)
+        self.selected_label.setObjectName("mutedText")
+        self.selected_label.setWordWrap(True)
         self.input_status = QLabel("조각 조합과 색별 9개 제한으로 확정되는 칸만 자동 입력합니다.")
-        self.input_status.setStyleSheet("color: #475569;")
-        layout.addWidget(self.input_status)
+        self.input_status.setObjectName("mutedText")
+        self.input_status.setWordWrap(True)
 
         self.edit_centers = QCheckBox(
-            "중앙 색 수정 — 실물의 중앙 색이 예시와 다를 때"
+            "중앙 색 수정\n— 중앙 색이 예시와 다를 때"
         )
-        layout.addWidget(self.edit_centers)
 
         panel, self.input_buttons = self.make_net(
             editable=True
         )
-        layout.addWidget(panel, 0, Qt.AlignmentFlag.AlignHCenter)
+        board_card = QFrame()
+        board_card.setObjectName("card")
+        board_layout = QVBoxLayout(board_card)
+        board_layout.setContentsMargins(8, 6, 8, 6)
+        board_layout.addWidget(panel, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.count_label = QLabel()
         self.count_label.setWordWrap(True)
-        layout.addWidget(self.count_label)
+        self.count_label.setObjectName("mutedText")
 
         hint = QLabel(
             "면 그림의 위쪽: F/R/B/L은 U · U는 B · D는 F"
         )
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(hint)
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
 
         input_actions = QHBoxLayout()
         self.reset_colors_button = QPushButton("색상 초기화")
@@ -460,22 +577,47 @@ class CubeGuide(QMainWindow):
         self.solve_button.setMinimumHeight(42)
         self.solve_button.clicked.connect(self.start_solve)
         input_actions.addWidget(self.solve_button)
-        layout.addLayout(input_actions)
 
-        self.tabs.addTab(self.input_page, "① 색상 입력")
+        summary_card = QFrame()
+        summary_card.setObjectName("card")
+        summary_card.setFixedWidth(300)
+        summary_layout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(16, 14, 16, 14)
+        summary_layout.setSpacing(10)
+        summary_title = QLabel("입력 상태")
+        summary_title.setStyleSheet("font-size: 15px; font-weight: 700;")
+        summary_layout.addWidget(summary_title)
+        summary_layout.addWidget(self.selected_label)
+        summary_layout.addWidget(self.input_status)
+        summary_layout.addWidget(self.edit_centers)
+        summary_layout.addWidget(self.count_label)
+        summary_layout.addWidget(hint)
+        summary_layout.addStretch()
+        summary_layout.addLayout(input_actions)
+
+        self.input_content_layout = QHBoxLayout()
+        self.input_content_layout.setSpacing(12)
+        self.input_content_layout.addWidget(board_card, 0)
+        self.input_content_layout.addWidget(summary_card, 1)
+        self.input_content_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addLayout(self.input_content_layout, 1)
+
+        self.tabs.addTab(self.make_scroll_page(self.input_page), "① 색상 입력")
 
     def make_guide_page(self):
         self.guide_page = QWidget()
+        self.guide_page.setObjectName("appPage")
         layout = QVBoxLayout(self.guide_page)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(6)
 
         self.basis_label = QLabel()
         self.basis_label.setWordWrap(True)
+        self.basis_label.setObjectName("mutedText")
         layout.addWidget(self.basis_label)
 
         self.step_label = QLabel()
-        self.step_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold;"
-        )
+        self.step_label.setObjectName("stepTitle")
         layout.addWidget(self.step_label)
 
         self.after_checkbox = QCheckBox(
@@ -513,6 +655,7 @@ class CubeGuide(QMainWindow):
 
         self.view_label = QLabel()
         self.view_label.setWordWrap(True)
+        self.view_label.setObjectName("mutedText")
         detail.addWidget(self.view_label)
 
         face_grid = QGridLayout()
@@ -521,6 +664,7 @@ class CubeGuide(QMainWindow):
         for index in range(9):
             button = QPushButton()
             button.setFixedSize(58, 58)
+            button.setStyleSheet("padding: 0;")
             self.detail_buttons.append(button)
             face_grid.addWidget(
                 button,
@@ -564,7 +708,15 @@ class CubeGuide(QMainWindow):
 
         layout.addLayout(controls)
 
-        self.tabs.addTab(self.guide_page, "② 회전 안내")
+        self.tabs.addTab(self.make_scroll_page(self.guide_page), "② 회전 안내")
+
+    @staticmethod
+    def make_scroll_page(page):
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidget(page)
+        return scroll_area
 
     def select_color(self, color):
         self.selected_color = color
@@ -590,10 +742,15 @@ class CubeGuide(QMainWindow):
             else "지우개"
         )
         self.selected_label.setText(
-            f"현재 선택 · {name}  —  우클릭 부채꼴 순서: 흰 → 노 → 파 → 초 → 빨 → 주"
+            f"현재 선택 · {name}  —  우클릭 부채꼴 순서:\n흰 → 노 → 파 → 초 → 빨 → 주"
         )
 
     def begin_radial_color(self, button, global_position):
+        if (
+            button.property("sticker_index") == 4
+            and not self.edit_centers.isChecked()
+        ):
+            return
         self.radial_button = button
         self.radial_picker.open_at(global_position)
 
@@ -609,15 +766,6 @@ class CubeGuide(QMainWindow):
         index = button.property("sticker_index")
         if face is not None and index is not None:
             self.paint_sticker(face, int(index), color)
-
-    def auto_fill_from_button(self):
-        filled = self.auto_fill_forced_colors()
-        if filled:
-            self.tabs.setTabEnabled(1, False)
-            self.input_status.setText(f"확실하게 결정되는 색 {filled}칸을 자동 입력했습니다.")
-            self.update_input()
-        else:
-            self.input_status.setText("현재 입력만으로 확정할 수 있는 빈칸은 없습니다.")
 
     def auto_fill_forced_colors(self):
         """Fill only stickers forced by center identities, cubie colors, and color counts."""
@@ -802,6 +950,7 @@ class CubeGuide(QMainWindow):
                 sticker_style(
                     color,
                     highlighted=face == active_face,
+                    size=40,
                 )
             )
 
@@ -891,9 +1040,9 @@ class CubeGuide(QMainWindow):
                 self,
                 "해법 계산 실패",
                 worker.error
-                + "\n\n색 개수가 맞더라도 불가능한 "
-                "조합이거나 입력 방향이 잘못됐을 수 있습니다."
-                "\n뒷면·윗면·아랫면을 다시 확인하세요.",
+                + "\n\n색 개수는 정확하지만 해법이 존재하지 않습니다. "
+                "잘못된 조합이거나 입력 방향이 잘못됐을 수 있습니다."
+                "\n정확한 색상이 맞는지 다시 확인해주세요.",
             )
         else:
             self.show_solution(worker.solution)
@@ -1040,7 +1189,7 @@ class CubeGuide(QMainWindow):
                 face if index == 4 else color
             )
             button.setStyleSheet(
-                sticker_style(color)
+                sticker_style(color, size=58)
             )
 
     def next(self):
@@ -1093,23 +1242,7 @@ class CubeGuide(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
-    app.setStyleSheet("""
-        QWidget {
-            font-family: 'Malgun Gothic';
-            font-size: 13px;
-        }
-        QMainWindow {
-            background: #F1F5F9;
-        }
-        QPushButton {
-            padding: 7px;
-            border-radius: 6px;
-        }
-        QTabBar::tab {
-            padding: 10px 20px;
-        }
-    """)
+    configure_application_style(app)
 
     window = CubeGuide()
     window.show()

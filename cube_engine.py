@@ -2,7 +2,7 @@
 """
 This Rubik's cube solver—originally written years ago and updated using GPT-6.1sol—takes color inputs via a 2D net layout and specializes in finding minimum-rotation solutions.
 start : python gui_3d.py
-
+Need: PySide6, kociemba
 """
 
 #!/usr/bin/env python3

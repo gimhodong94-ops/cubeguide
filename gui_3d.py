@@ -5,15 +5,25 @@ from PySide6.QtWidgets import (
     QApplication,
     QStackedWidget,
     QHBoxLayout,
+    QVBoxLayout,
     QPushButton,
     QCheckBox,
     QLabel,
     QSlider,
     QMessageBox,
+    QScrollArea,
+    QSizePolicy,
     QWidget,
 )
 
-from gui import COLOR_NAMES, CubeGuide, sticker_style
+from gui import (
+    COLOR_HEX,
+    COLOR_NAMES,
+    CubeGuide,
+    TOP_NEIGHBOR,
+    configure_application_style,
+    sticker_style,
+)
 from cube3d import Cube3D
 
 
@@ -34,16 +44,8 @@ class CubeGuide3D(CubeGuide):
 
         cube_stage = QWidget()
         cube_layout = QHBoxLayout(cube_stage)
-        cube_layout.setContentsMargins(4, 4, 4, 4)
-        cube_layout.setSpacing(8)
-
-        self.roll_left_button = QPushButton("↶")
-        self.roll_left_button.setFixedSize(42, 62)
-        self.roll_left_button.setStyleSheet("font-size: 24px; border-radius: 12px;")
-        self.roll_left_button.setToolTip("화면을 반시계 방향으로 90° 회전")
-        self.roll_left_button.clicked.connect(
-            lambda: self.cube3d.rotate_roll(-90)
-        )
+        cube_layout.setContentsMargins(0, 0, 0, 0)
+        cube_layout.setSpacing(2)
 
         self.cube3d = Cube3D(cube_stage)
         self.cube3d.animation_finished.connect(
@@ -53,24 +55,60 @@ class CubeGuide3D(CubeGuide):
             self.camera_focus_finished
         )
 
-        self.roll_right_button = QPushButton("↷")
-        self.roll_right_button.setFixedSize(42, 62)
-        self.roll_right_button.setStyleSheet("font-size: 24px; border-radius: 12px;")
-        self.roll_right_button.setToolTip("화면을 시계 방향으로 90° 회전")
-        self.roll_right_button.clicked.connect(
-            lambda: self.cube3d.rotate_roll(90)
-        )
-
-        cube_layout.addWidget(self.roll_left_button)
         cube_layout.addWidget(self.cube3d, 1)
-        cube_layout.addWidget(self.roll_right_button)
 
         # 3D와 기존 전개도를 전환할 수 있습니다.
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(cube_stage)
-        self.view_stack.addWidget(net_panel)
+        net_scroll = QScrollArea()
+        net_scroll.setWidgetResizable(True)
+        net_scroll.setWidget(net_panel)
+        self.view_stack.addWidget(net_scroll)
+        self.view_stack.setMinimumSize(0, 0)
+        self.view_stack.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Expanding,
+        )
 
-        body.insertWidget(0, self.view_stack, 3)
+        body.insertWidget(0, self.view_stack, 1)
+        body.setStretch(1, 1)
+
+        self.next_reference_panel = QWidget()
+        self.next_reference_panel.setFixedWidth(116)
+        reference_layout = QVBoxLayout(self.next_reference_panel)
+        reference_layout.setContentsMargins(4, 10, 4, 10)
+        reference_layout.setSpacing(8)
+
+        reference_title = QLabel("다음 기준점")
+        reference_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        reference_title.setStyleSheet("font-weight: 700;")
+        reference_layout.addWidget(reference_title)
+
+        self.next_reference_face = QLabel()
+        self.next_reference_face.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_reference_face.setWordWrap(True)
+        reference_layout.addWidget(self.next_reference_face)
+
+        self.next_reference_top = QLabel()
+        self.next_reference_top.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_reference_top.setWordWrap(True)
+        self.next_reference_top.setFixedSize(40, 40)
+        reference_layout.addWidget(
+            self.next_reference_top,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+
+        self.next_reference_center = QLabel()
+        self.next_reference_center.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_reference_center.setFixedSize(96, 78)
+        reference_layout.addWidget(
+            self.next_reference_center,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+        reference_layout.addStretch()
+        body.addWidget(self.next_reference_panel, 0)
 
         actions = QHBoxLayout()
 
@@ -132,13 +170,12 @@ class CubeGuide3D(CubeGuide):
     def render_step(self):
         self._camera_transition_pending = self.step < len(self.moves)
         super().render_step()
+        self.update_next_reference()
 
         finished = self.step >= len(self.moves)
         if finished:
             self._camera_transition_pending = False
             self.play_button.setEnabled(False)
-            self.roll_left_button.setEnabled(True)
-            self.roll_right_button.setEnabled(True)
             self.reset_camera_button.setEnabled(True)
             self.cube3d.set_state(self.states[-1])
         else:
@@ -146,6 +183,53 @@ class CubeGuide3D(CubeGuide):
             self.cube3d.set_state(self.states[self.step])
             face = self.moves[self.step][0]
             self.cube3d.focus_face(face)
+
+    def update_next_reference(self):
+        next_step = self.step + 1
+        if next_step >= len(self.moves):
+            self.next_reference_face.setText("다음 동작 없음")
+            self.next_reference_top.clear()
+            self.next_reference_top.setStyleSheet("")
+            self.next_reference_center.setText("완료")
+            self.next_reference_center.setStyleSheet(
+                "background: #E2E8F0; color: #475569;"
+                "border: 1px solid #CBD5E1; border-radius: 8px;"
+                "font-weight: 700;"
+            )
+            return
+
+        face = self.moves[next_step][0]
+        center_color = self.states[next_step][face][4]
+        top_face = TOP_NEIGHBOR[face]
+        top_color = self.states[next_step][top_face][4]
+        foreground = (
+            "#172033" if center_color in ("W", "Y", "O")
+            else "#FFFFFF"
+        )
+
+        self.next_reference_face.setText(f"다음 면 · {face}")
+        top_foreground = (
+            "#172033" if top_color in ("W", "Y", "O")
+            else "#FFFFFF"
+        )
+        self.next_reference_top.setText(
+            f"윗면\n{COLOR_NAMES[top_color]}"
+        )
+        self.next_reference_top.setStyleSheet(
+            f"background: {COLOR_HEX[top_color]};"
+            f"color: {top_foreground};"
+            "border: 1px solid #CBD5E1; border-radius: 6px;"
+            "font-size: 11px; font-weight: 700;"
+        )
+        self.next_reference_center.setText(
+            f"{face}\n{COLOR_NAMES[center_color]}"
+        )
+        self.next_reference_center.setStyleSheet(
+            f"background: {COLOR_HEX[center_color]};"
+            f"color: {foreground};"
+            "border: 1px solid #CBD5E1; border-radius: 8px;"
+            "font-size: 13px; font-weight: 700;"
+        )
 
     def _set_turn_controls_enabled(self, enabled):
         self.next_button.setEnabled(
@@ -158,8 +242,6 @@ class CubeGuide3D(CubeGuide):
         self.play_button.setEnabled(
             enabled and self.step < len(self.moves)
         )
-        self.roll_left_button.setEnabled(enabled)
-        self.roll_right_button.setEnabled(enabled)
         self.reset_camera_button.setEnabled(enabled)
 
     def camera_focus_finished(self):
@@ -205,7 +287,7 @@ class CubeGuide3D(CubeGuide):
         for index, button in enumerate(self.detail_buttons):
             color = self.states[old_step][inverse[0]][index]
             button.setText(inverse[0] if index == 4 else color)
-            button.setStyleSheet(sticker_style(color))
+            button.setStyleSheet(sticker_style(color, size=58))
 
     def _begin_rewind_animation(self):
         if self._pending_rewind is None:
@@ -394,27 +476,11 @@ class CubeGuide3D(CubeGuide):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
-    app.setStyleSheet("""
-        QWidget {
-            font-family: 'Malgun Gothic';
-            font-size: 13px;
-        }
-        QMainWindow {
-            background: #F1F5F9;
-        }
-        QPushButton {
-            padding: 7px;
-            border-radius: 6px;
-        }
-        QTabBar::tab {
-            padding: 10px 20px;
-        }
-    """)
+    configure_application_style(app)
 
     window = CubeGuide3D()
     window.setWindowTitle("3×3 큐브 가이드 · 3D")
-    window.resize(1200, 850)
+    window.resize(1180, 820)
     window.show()
 
     sys.exit(app.exec())
